@@ -216,3 +216,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Temporary & Generated Defense Brief Artifacts
+*.pdf
+tmp/
+temp/
+
+# Local SQLite Database & Test Images
+*.db
+temp_*
+test.png
