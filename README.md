@@ -1,5 +1,4 @@
-````
-# RepresentAI — AI-Powered Dispute & POD Defense
+# **RepresentAI — AI-Powered Dispute & POD Defense*
 
 RepresentAI is a hybrid AI system designed to help detect potentially fraudulent or inconsistent delivery disputes using **Proof of Delivery (POD) documents, OCR, visual evidence, deterministic verification, and multimodal AI reasoning**.
 
@@ -23,13 +22,13 @@ Manually reviewing every dispute is expensive and difficult to scale.
 
 RepresentAI attempts to automate the initial investigation and route suspicious cases for appropriate action.
 
----
+
 
 ## Solution
 
 RepresentAI uses a **hybrid deterministic + AI pipeline**:
 
-```text
+```
                  ┌──────────────────────┐
                  │   Dispute / POD      │
                  │   Image or Text      │
