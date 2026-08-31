@@ -1,90 +1,87 @@
-from backend.state import OCRExtractedData
+import os
 
-# Benchmark dataset containing 5 mock test cases for evaluation
-EVAL_DATASET = [
-    {
-        "case_id": "CASE-001",
-        "image_path": "test.png",
-        "ledger_customer_name": "Rahul Sharma",
-        "ledger_amount": 149.99,
-        "expected_verdict": "REJECTED",
-        "ocr_data": OCRExtractedData(
-            customer_name="John Fake Person",
-            order_id="ORD-99281",
-            amount=149.99,
-            carrier_name="UPS",
-            tracking_number="1Z9999999999999999",
-            delivery_status="DELIVERED",
-            order_date="2026-08-01",
-            delivery_date="2026-08-04"
-        )
-    },
-    {
-        "case_id": "CASE-002",
-        "image_path": "test.png",
-        "ledger_customer_name": "Priya Patel",
-        "ledger_amount": 299.50,
-        "expected_verdict": "ACCEPTED",
-        "ocr_data": OCRExtractedData(
-            customer_name="Priya Patel",
-            order_id="ORD-44102",
-            amount=299.50,
-            carrier_name="FedEx",
-            tracking_number="987654321012",
-            delivery_status="DELIVERED",
-            order_date="2026-08-02",
-            delivery_date="2026-08-05"
-        )
-    },
-    {
-        "case_id": "CASE-003",
-        "image_path": "test.png",
-        "ledger_customer_name": "Amit Verma",
-        "ledger_amount": 89.00,
-        "expected_verdict": "REJECTED",
-        "ocr_data": OCRExtractedData(
-            customer_name="Amit Verma",
-            order_id="ORD-11029",
-            amount=500.00,  # Amount mismatch against ledger
-            carrier_name="USPS",
-            tracking_number="9400100000000000000000",
-            delivery_status="DELIVERED",
-            order_date="2026-08-03",
-            delivery_date="2026-08-06"
-        )
-    },
-    {
-        "case_id": "CASE-004",
-        "image_path": "test.png",
-        "ledger_customer_name": "Sneha Reddy",
-        "ledger_amount": 420.00,
-        "expected_verdict": "ACCEPTED",
-        "ocr_data": OCRExtractedData(
-            customer_name="Sneha Reddy",
-            order_id="ORD-88301",
-            amount=420.00,
-            carrier_name="DHL",
-            tracking_number="1234567890",
-            delivery_status="DELIVERED",
-            order_date="2026-08-05",
-            delivery_date="2026-08-08"
-        )
-    },
-    {
-        "case_id": "CASE-005",
-        "image_path": "test.png",
-        "ledger_customer_name": "Vikram Singh",
-        "ledger_amount": 1250.00,
-        "expected_verdict": "REJECTED",
-        "ocr_data": OCRExtractedData(
-            customer_name="Unknown Receiver",
-            order_id="ORD-00921",
-            amount=100.00,  # Double discrepancy (name & amount mismatch)
-            carrier_name="UPS",
-            tracking_number="1Z8888888888888888",
-            delivery_status="IN_TRANSIT",
-            order_date="2026-08-10",
-            delivery_date="N/A"
-        )
-    }
+RECIPIENTS = [
+    "Prashanth C", "Prashant C", "P. Kumar", "Aarav Sharma",
+    "Ananya Iyer", "Rohan Mehta", "Priyanka Reddy", "Siddharth Rao"
 ]
+
+def load_programmatic_dataset() -> list[dict]:
+    """
+    Generates 34 programmatic evaluation test cases covering structured text scenarios.
+    """
+    dataset = []
+
+    for i in range(1, 35):
+        case_id = f"PROG-TXT-{i:02d}"
+        
+        # Category 1: Clean Valid PODs (Cases 1-15) -> EXPECTED: ACCEPTED
+        if i <= 15:
+            recipient_name = RECIPIENTS[(i - 1) % len(RECIPIENTS)]
+            raw_text = (
+                f"Carrier: FedEx\n"
+                f"Tracking ID: TRK-998877{i:02d}\n"
+                f"Recipient: {recipient_name}\n"
+                f"Status: DELIVERED\n"
+                f"Date: 2026-08-25"
+            )
+            expected = "ACCEPTED"
+            cat = "Clean Valid POD"
+            customer_name = recipient_name
+
+        # Category 2: Fuzzy Recipient Name Matching (Cases 16-22) -> EXPECTED: ACCEPTED
+        elif i <= 22:
+            raw_text = (
+                f"Carrier: UPS\n"
+                f"Tracking ID: 1Z999999011234{i:02d}\n"
+                f"Recipient: Prashant C\n"
+                f"Status: DELIVERED\n"
+                f"Date: 2026-08-25"
+            )
+            expected = "ACCEPTED"
+            cat = "Fuzzy Recipient Name"
+            customer_name = "Prashanth C"
+
+        # Category 3: Malformed / Invalid Tracking ID (Cases 23-28) -> EXPECTED: REJECTED
+        elif i <= 28:
+            raw_text = (
+                f"Carrier: DHL\n"
+                f"Tracking ID: INVALID-{i:02d}\n"
+                f"Recipient: Prashanth C\n"
+                f"Status: DELIVERED\n"
+                f"Date: 2026-08-25"
+            )
+            expected = "REJECTED"
+            cat = "Malformed Tracking ID"
+            customer_name = "Prashanth C"
+
+        # Category 4: Non-Delivered Delivery Status (Cases 29-34) -> EXPECTED: REJECTED
+        else:
+            raw_text = (
+                f"Carrier: FedEx\n"
+                f"Tracking ID: TRK-554433{i:02d}\n"
+                f"Recipient: Prashanth C\n"
+                f"Status: IN_TRANSIT\n"
+                f"Date: 2026-08-25"
+            )
+            expected = "REJECTED"
+            cat = "Non-Delivered Status"
+            customer_name = "Prashanth C"
+
+        # Parse fields dynamically out of raw_text for the benchmark pipeline
+        dataset.append({
+            "case_id": case_id,
+            "category": cat,
+            "raw_text": raw_text,
+            "extracted_name": customer_name,
+            "extracted_amount": 150.00,
+            "extracted_tracking_id": f"TRK-998877{i:02d}" if i <= 22 else f"INVALID-{i:02d}",
+            "extracted_status": "DELIVERED" if i <= 28 else "IN_TRANSIT",
+            "expected_name": customer_name,
+            "expected_amount": 150.00,
+            "expected_verdict": expected
+        })
+
+    return dataset
+
+# Dynamically export to resolve run_evals.py import
+PROGRAMMATIC_TEXT_DATASET = load_programmatic_dataset()

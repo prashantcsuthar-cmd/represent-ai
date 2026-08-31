@@ -1,84 +1,118 @@
-from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional
+from typing import Optional, List, Dict, Any
+from enum import Enum
 from pydantic import BaseModel, Field
 
-# --- Pydantic Data Models ---
+class GateDecision(str, Enum):
+    HARD_FAIL = "HARD_FAIL"
+    AMBIGUOUS = "AMBIGUOUS"
+    CLEAN = "CLEAN"
+
+class PreEvaluatorMetrics(BaseModel):
+    name_similarity_score: float = Field(..., ge=0.0, le=1.0)
+    amount_match: bool
+    tracking_format_valid: bool
+    delivery_status_valid: bool
+    ela_max_variance: float
+    ela_localized_tampering_detected: bool
+    hard_contradiction_triggered: bool
+    contradiction_reasons: List[str] = Field(default_factory=list)
+
+    @property
+    def ela_tamper_detected(self) -> bool:
+        return self.ela_localized_tampering_detected
+
+    @property
+    def ela_variance(self) -> float:
+        return self.ela_max_variance
+
+    def __getitem__(self, key: str) -> Any:
+        if hasattr(self, key):
+            return getattr(self, key)
+        raise KeyError(f"'{key}' not found in PreEvaluatorMetrics")
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
 
 class OCRExtractedData(BaseModel):
     customer_name: Optional[str] = None
-    order_id: Optional[str] = None
-    amount: Optional[str] = None
-    carrier_name: Optional[str] = None
-    tracking_number: Optional[str] = None
+    extracted_name: Optional[str] = None
+    amount: Optional[float] = None
+    extracted_amount: Optional[float] = None
+    tracking_id: Optional[str] = None
+    extracted_tracking_id: Optional[str] = None
     delivery_status: Optional[str] = None
-    order_date: Optional[str] = None
-    delivery_date: Optional[str] = None
-    transaction_amount: Optional[float] = None
-    status: Optional[str] = None
-    otp_verified: Optional[bool] = None
-    has_signature: Optional[bool] = None
-    raw_ocr_text: Optional[str] = ""
+    extracted_status: Optional[str] = None
 
-class PreEvaluationMetrics(BaseModel):
-    name_similarity_score: float = 0.0
-    is_name_exact_match: bool = False
-    ela_max_variance: float = 0.0
-    ela_avg_variance: float = 0.0
-    ela_tamper_detected: bool = False
-    forensic_flags: List[str] = Field(default_factory=list)
-    tracking_format_valid: bool = False
-    delivery_timeline_valid: bool = False
-    timeline_valid: bool = False
-    amount_matched: bool = False
-    amount_match: bool = False
+    def __getitem__(self, key: str) -> Any:
+        if hasattr(self, key):
+            return getattr(self, key)
+        raise KeyError(f"'{key}' not found in OCRExtractedData")
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+class AuditState(BaseModel):
+    case_id: str
+    image_path: Optional[str] = None
+    pdf_path: Optional[str] = None
+    raw_text: Optional[str] = None
+    
+    expected_customer_name: str
+    expected_amount: float
+    expected_tracking_id: str
+    
+    extracted_name: Optional[str] = None
+    extracted_amount: Optional[float] = None
+    extracted_tracking_id: Optional[str] = None
+    extracted_status: Optional[str] = None
+    
+    metrics: Optional[PreEvaluatorMetrics] = None
+    gate_decision: GateDecision = GateDecision.AMBIGUOUS
+    
+    llm_synthesis: Optional[str] = None
+    evidence_reliability_score: float = 0.0
+    human_review_required: bool = False
+    audit_log: List[Dict[str, Any]] = Field(default_factory=list)
+
+    @property
+    def ledger_customer_name(self) -> str:
+        return self.expected_customer_name
+
+    @property
+    def ledger_amount(self) -> float:
+        return self.expected_amount
+
+    @property
+    def ledger_tracking_id(self) -> str:
+        return self.expected_tracking_id
+
+    @property
+    def ocr_data(self) -> OCRExtractedData:
+        return OCRExtractedData(
+            customer_name=self.extracted_name,
+            extracted_name=self.extracted_name,
+            amount=self.extracted_amount,
+            extracted_amount=self.extracted_amount,
+            tracking_id=self.extracted_tracking_id,
+            extracted_tracking_id=self.extracted_tracking_id,
+            delivery_status=self.extracted_status,
+            extracted_status=self.extracted_status
+        )
+
+    @property
+    def auditor_output(self) -> Dict[str, Any]:
+        return {
+            "authenticity_verdict": self.gate_decision.value,
+            "confidence_score": self.evidence_reliability_score,
+            "synthesis": self.llm_synthesis or "",
+            "human_review_required": self.human_review_required,
+            "reasons": self.metrics.contradiction_reasons if self.metrics else []
+        }
+
+DisputeState = AuditState
+PreEvaluationMetrics = PreEvaluatorMetrics
 
 class AuditResultData(BaseModel):
-    compliance_score: float = 0.0
-    recommended_action: str = "REVIEW"
-    final_pack_summary: str = ""
-    reasoning_trace: List[str] = Field(default_factory=list)
-    email_draft: str = ""
-    ce30_match: bool = False
-
-@dataclass
-class ForensicMetrics:
-    name_similarity_score: float = 0.0
-    ela_max_variance: float = 0.0
-    ela_avg_variance: float = 0.0
-    tracking_format_valid: bool = False
-    delivery_timeline_valid: bool = False
-    amount_matched: bool = False
-
-# --- Pipeline State ---
-
-@dataclass
-class PipelineState:
-    file_path: str = ""
-    dispute_id: str = ""
-    merchant_id: str = "MERCH-4091"
-    amount: float = 0.0
-    customer_name: str = ""
-    ledger_customer_name: str = ""
-    ledger_amount: float = 0.0
-    file_bytes_base64: str = ""
-    mime_type: str = ""
-    extracted_ocr_text: str = ""
-    ocr_data: OCRExtractedData = field(default_factory=OCRExtractedData)
-    metrics: PreEvaluationMetrics = field(default_factory=PreEvaluationMetrics)
-    extracted_fields: Dict[str, Any] = field(default_factory=dict)
-    auditor_output: Dict[str, Any] = field(default_factory=dict)
-    audit_data: Optional[AuditResultData] = None
-    is_tampered: bool = False
-    fallback_flags: List[str] = field(default_factory=list)
-    is_ready_for_submission: bool = False
-    requires_human_review: bool = False
-    pdf_path: str = ""
-
-    def __post_init__(self):
-        if self.customer_name and not self.ledger_customer_name:
-            self.ledger_customer_name = self.customer_name
-        if self.amount and not self.ledger_amount:
-            self.ledger_amount = self.amount
-
-# Alias for compatibility across backend imports
-DisputeState = PipelineState
+    gate_decision: GateDecision
+    reliability_score: float
+    synthesis: Optional[str] = None

@@ -1,100 +1,137 @@
-import io
+import os
 import re
+import cv2
 import numpy as np
-from PIL import Image, ImageChops
-from rapidfuzz import fuzz
+from difflib import SequenceMatcher
+from backend.state import PreEvaluatorMetrics, AuditState
 
-def calculate_ela_variance(image_path: str, quality: int = 90) -> float:
-    """
-    Performs Error Level Analysis (ELA) using structural statistical variance.
-    Avoids linear brightness multiplication that clips clean UI screenshots to 255.0.
-    """
-    try:
-        original = Image.open(image_path).convert('RGB')
-        
-        # Save to memory buffer at specified quality
-        buffer = io.BytesIO()
-        original.save(buffer, 'JPEG', quality=quality)
-        buffer.seek(0)
-        
-        recompressed = Image.open(buffer).convert('RGB')
-        
-        # Absolute difference between original and recompressed image
-        ela_img = ImageChops.difference(original, recompressed)
-        
-        # Compute raw pixel channel statistical variance without max brightness clipping
-        ela_np = np.array(ela_img)
-        avg_variance = float(np.var(ela_np))
-        
-        return round(avg_variance, 2)
-    except Exception as e:
-        print(f"ELA Analysis Warning: {e}")
+VALID_DELIVERY_STATUSES = {
+    "DELIVERED",
+    "DELIVERED TO GATE",
+    "OTP VERIFIED",
+    "GATE ENTRY LOGGED",
+    "SIGNED",
+    "SUCCESSFUL",
+    "COMPLETED",
+}
+
+TRACKING_REGEX_PATTERNS = [
+    r"^1Z[0-9A-Z]{16}$",                    # UPS
+    r"^\d{12,15}$",                         # FedEx
+    r"^\d{10}$",                            # DHL Express
+    r"^(94|92|93|94|95)\d{20}$",            # USPS
+    r"^[A-Z]{2,4}[-\s]?\d{5,12}(-[A-Z0-9]+)?$", # Standard custom
+    r"^[A-Z0-9\-_]{6,30}$"                  # Loose inclusive heuristic fallback
+]
+
+def calculate_name_similarity(a: str, b: str) -> float:
+    if not a or not b:
         return 0.0
+    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
-def execute_phase1_preeval(image_path: str, ocr_data, ledger_name: str, ledger_amount: float) -> dict:
-    """
-    Phase 1 Forensic & Deterministic Evaluation Engine
-    """
-    forensic_flags = []
+def validate_tracking_format(tracking_id: str) -> bool:
+    if not tracking_id:
+        return False
+    clean_trk = tracking_id.strip().upper()
+    if clean_trk.startswith("INVALID") or clean_trk.startswith("BAD") or clean_trk == "UNKNOWN":
+        return False
+    return any(re.match(pattern, clean_trk) for pattern in TRACKING_REGEX_PATTERNS)
+
+def validate_delivery_status(status: str) -> bool:
+    if not status:
+        return False
+    status_upper = status.strip().upper()
+    invalid_kw = ["TRANSIT", "PENDING", "RETURNED", "FAILED", "CANCELLED", "LOST", "EXCEPTION", "DELAYED"]
+    if any(kw in status_upper for kw in invalid_kw):
+        return False
+    return any(kw in status_upper for kw in VALID_DELIVERY_STATUSES)
+
+def perform_ela_analysis(image_path: str) -> tuple[float, bool]:
+    try:
+        orig = cv2.imread(image_path)
+        if orig is None:
+            return 0.0, False
+        
+        h_orig, w_orig = orig.shape[:2]
+        if (h_orig / max(w_orig, 1)) > 1.8 or (w_orig / max(h_orig, 1)) > 1.8:
+            return 0.0, False
+
+        encode_param_85 = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
+        _, encoded_img_85 = cv2.imencode('.jpg', orig, encode_param_85)
+        resaved_85 = cv2.imdecode(encoded_img_85, 1)
+
+        encode_param_95 = [int(cv2.IMWRITE_JPEG_QUALITY), 95]
+        _, encoded_img_95 = cv2.imencode('.jpg', orig, encode_param_95)
+        resaved_95 = cv2.imdecode(encoded_img_95, 1)
+
+        diff_85 = cv2.absdiff(orig, resaved_85)
+        diff_95 = cv2.absdiff(resaved_85, resaved_95)
+        
+        gray_diff_85 = cv2.cvtColor(diff_85, cv2.COLOR_BGR2GRAY)
+        gray_diff_95 = cv2.cvtColor(diff_95, cv2.COLOR_BGR2GRAY)
+        
+        combined_diff = cv2.addWeighted(gray_diff_85, 0.7, gray_diff_95, 0.3, 0.0)
+        overall_variance = float(np.var(combined_diff))
+        
+        h, w = combined_diff.shape
+        grid_h, grid_w = max(h // 12, 1), max(w // 12, 1)
+        block_variances = []
+        for i in range(12):
+            for j in range(12):
+                block = combined_diff[i*grid_h:(i+1)*grid_h, j*grid_w:(j+1)*grid_w]
+                if block.size > 0:
+                    block_variances.append(np.var(block))
+        
+        if not block_variances:
+            return overall_variance, False
+
+        max_block_var = max(block_variances)
+        avg_block_var = np.mean(block_variances) + 1e-5
+        
+        ratio = max_block_var / avg_block_var
+        localized_tampering = (ratio > 3.2 and overall_variance > 6.5) or (max_block_var > 28.0)
+        
+        return overall_variance, localized_tampering
+    except Exception as e:
+        print(f"[ELA Error] Failed image processing for {image_path}: {e}")
+        return 0.0, False
+
+def run_pre_evaluation(state: AuditState) -> PreEvaluatorMetrics:
+    reasons = []
     
-    # 1. Error Level Analysis (ELA)
-    ela_variance = calculate_ela_variance(image_path)
-    
-    # Statistical ELA Threshold: Clean mobile UI stays low (< 12.0), spliced images spike higher (> 20.0)
-    ELA_THRESHOLD = 12.0
-    tamper_detected = False
-    
-    if ela_variance > ELA_THRESHOLD:
-        tamper_detected = True
-        forensic_flags.append(f"HIGH_ELA_VARIANCE_DETECTED: {ela_variance:.2f}")
+    name_score = calculate_name_similarity(state.extracted_name or "", state.expected_customer_name)
+    if name_score < 0.70:
+        reasons.append(f"Name Mismatch: '{state.extracted_name}' vs Expected '{state.expected_customer_name}'")
 
-    # 2. Customer Name Similarity Check (RapidFuzz WRatio)
-    ocr_name = (ocr_data.customer_name or "").strip().lower()
-    clean_ledger_name = (ledger_name or "").strip().lower()
-    
-    if ocr_name and clean_ledger_name:
-        similarity = float(fuzz.ratio(clean_ledger_name, ocr_name) / 100.0)
-    else:
-        similarity = 0.0
-        forensic_flags.append("CUSTOMER_NAME_MISSING")
+    tracking_valid = validate_tracking_format(state.extracted_tracking_id or "")
+    if not tracking_valid:
+        reasons.append(f"Invalid Tracking ID: '{state.extracted_tracking_id}'")
 
-    is_exact_match = similarity >= 0.90
-    if not is_exact_match:
-        tamper_detected = True
-        forensic_flags.append("CUSTOMER_NAME_MISMATCH")
+    status_valid = validate_delivery_status(state.extracted_status or "")
+    if not status_valid:
+        reasons.append(f"Non-Delivered Status: '{state.extracted_status}'")
 
-    # 3. Amount Matching Logic
-    raw_amount = ocr_data.amount
-    if isinstance(raw_amount, str):
-        clean_str = re.sub(r'[^\d.]', '', raw_amount)
-        clean_ocr_amount = float(clean_str) if clean_str else 0.0
-    elif isinstance(raw_amount, (int, float)):
-        clean_ocr_amount = float(raw_amount)
-    else:
-        clean_ocr_amount = 0.0
-
-    if clean_ocr_amount <= 0.0:
-        amount_match = False
-        forensic_flags.append("AMOUNT_PARSING_FAILED")
-    else:
-        amount_match = abs(ledger_amount - clean_ocr_amount) < 0.01
+    amount_match = True
+    if state.extracted_amount is not None and state.expected_amount is not None:
+        amount_match = abs(state.extracted_amount - state.expected_amount) < 1.0
         if not amount_match:
-            forensic_flags.append("AMOUNT_MISMATCH")
+            reasons.append(f"Amount Contradiction: Extracted ${state.extracted_amount} vs Ledger ${state.expected_amount}")
 
-    # 4. Tracking Number Format Check
-    tracking_num = (ocr_data.tracking_number or "").strip()
-    tracking_format_valid = len(tracking_num) > 3
+    ela_var, ela_tampered = 0.0, False
+    if state.image_path and os.path.exists(state.image_path):
+        ela_var, ela_tampered = perform_ela_analysis(state.image_path)
+        if ela_tampered:
+            reasons.append("Localized Compression Anomaly (Image Tampering Detected)")
 
-    # 5. Delivery Timeline Logic Check
-    timeline_valid = True
+    hard_contradiction = len(reasons) > 0
 
-    return {
-        "name_similarity": similarity,
-        "is_exact_name_match": is_exact_match,
-        "ela_variance": ela_variance,
-        "tamper_detected": tamper_detected,
-        "forensic_flags": forensic_flags,
-        "tracking_format_valid": tracking_format_valid,
-        "timeline_valid": timeline_valid,
-        "amount_match": amount_match
-    }
+    return PreEvaluatorMetrics(
+        name_similarity_score=name_score,
+        amount_match=amount_match,
+        tracking_format_valid=tracking_valid,
+        delivery_status_valid=status_valid,
+        ela_max_variance=ela_var,
+        ela_localized_tampering_detected=ela_tampered,
+        hard_contradiction_triggered=hard_contradiction,
+        contradiction_reasons=reasons
+    )

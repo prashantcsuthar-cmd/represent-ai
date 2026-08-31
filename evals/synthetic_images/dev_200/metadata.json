@@ -1,0 +1,154 @@
+[
+  {
+    "filename": "authentic_01.jpg",
+    "path": "evals/synthetic_images/dev_200/authentic/authentic_01.jpg",
+    "waybill_no": "TRK-100024",
+    "recipient_name": "Siddharth Rao",
+    "is_tampered": false,
+    "tampered_field": null
+  },
+  {
+    "filename": "tampered_02.jpg",
+    "path": "evals/synthetic_images/dev_200/tampered/tampered_02.jpg",
+    "waybill_no": "TRK-100001",
+    "recipient_name": "Prashanth K.",
+    "is_tampered": true,
+    "tampered_field": "Recipient Name"
+  },
+  {
+    "filename": "authentic_03.jpg",
+    "path": "evals/synthetic_images/dev_200/authentic/authentic_03.jpg",
+    "waybill_no": "TRK-100003",
+    "recipient_name": "P. Kumar",
+    "is_tampered": false,
+    "tampered_field": null
+  },
+  {
+    "filename": "tampered_04.jpg",
+    "path": "evals/synthetic_images/dev_200/tampered/tampered_04.jpg",
+    "waybill_no": "TRK-100007",
+    "recipient_name": "Priyanka K.",
+    "is_tampered": true,
+    "tampered_field": "Recipient Name"
+  },
+  {
+    "filename": "authentic_05.jpg",
+    "path": "evals/synthetic_images/dev_200/authentic/authentic_05.jpg",
+    "waybill_no": "TRK-100013",
+    "recipient_name": "Ananya Iyer",
+    "is_tampered": false,
+    "tampered_field": null
+  },
+  {
+    "filename": "tampered_06.jpg",
+    "path": "evals/synthetic_images/dev_200/tampered/tampered_06.jpg",
+    "waybill_no": "TRK-100088",
+    "recipient_name": "Rajesh K.",
+    "is_tampered": true,
+    "tampered_field": "Recipient Name"
+  },
+  {
+    "filename": "authentic_07.jpg",
+    "path": "evals/synthetic_images/dev_200/authentic/authentic_07.jpg",
+    "waybill_no": "TRK-100024",
+    "recipient_name": "Siddharth Rao",
+    "is_tampered": false,
+    "tampered_field": null
+  },
+  {
+    "filename": "tampered_08.jpg",
+    "path": "evals/synthetic_images/dev_200/tampered/tampered_08.jpg",
+    "waybill_no": "TRK-100001",
+    "recipient_name": "Prashanth K.",
+    "is_tampered": true,
+    "tampered_field": "Recipient Name"
+  },
+  {
+    "filename": "authentic_09.jpg",
+    "path": "evals/synthetic_images/dev_200/authentic/authentic_09.jpg",
+    "waybill_no": "TRK-100003",
+    "recipient_name": "P. Kumar",
+    "is_tampered": false,
+    "tampered_field": null
+  },
+  {
+    "filename": "tampered_10.jpg",
+    "path": "evals/synthetic_images/dev_200/tampered/tampered_10.jpg",
+    "waybill_no": "TRK-100007",
+    "recipient_name": "Priyanka K.",
+    "is_tampered": true,
+    "tampered_field": "Recipient Name"
+  },
+  {
+    "filename": "authentic_11.jpg",
+    "path": "evals/synthetic_images/dev_200/authentic/authentic_11.jpg",
+    "waybill_no": "TRK-100013",
+    "recipient_name": "Ananya Iyer",
+    "is_tampered": false,
+    "tampered_field": null
+  },
+  {
+    "filename": "tampered_12.jpg",
+    "path": "evals/synthetic_images/dev_200/tampered/tampered_12.jpg",
+    "waybill_no": "TRK-100088",
+    "recipient_name": "Rajesh K.",
+    "is_tampered": true,
+    "tampered_field": "Recipient Name"
+  },
+  {
+    "id": "real_test_01",
+    "filename": "test.png",
+    "ground_truth": {
+      "customer_name": "John Fake Person",
+      "tracking_number": "TRK-9082-X",
+      "carrier_name": "Delhivery Express",
+      "order_id": "OD-1245789",
+      "delivery_status": "Delivered",
+      "order_date": "2024-05-19",
+      "delivery_date": "2024-05-20",
+      "is_authentic": false
+    }
+  },
+  {
+    "id": "real_test_02",
+    "filename": "Unstructured data image 1.png",
+    "ground_truth": {
+      "customer_name": "Rahul Sharma",
+      "tracking_number": "TRK-9082-X",
+      "carrier_name": "Delhivery Express",
+      "order_id": null,
+      "delivery_status": "Delivered",
+      "order_date": "2024-05-20",
+      "delivery_date": "2024-05-21",
+      "is_authentic": true
+    }
+  },
+  {
+    "id": "real_test_03",
+    "filename": "Unstructured data image 2.png",
+    "ground_truth": {
+      "customer_name": null,
+      "tracking_number": null,
+      "carrier_name": "Multiple",
+      "order_id": null,
+      "delivery_status": null,
+      "order_date": null,
+      "delivery_date": null,
+      "is_authentic": true
+    }
+  },
+  {
+    "id": "real_test_04",
+    "filename": "Unstructured data image 3.png",
+    "ground_truth": {
+      "customer_name": "Vikram Singh",
+      "tracking_number": "BD-7710923",
+      "carrier_name": "BlueDart Express",
+      "order_id": null,
+      "delivery_status": "Delivered",
+      "order_date": "2026-08-18",
+      "delivery_date": "2026-08-22",
+      "is_authentic": true
+    }
+  }
+]
